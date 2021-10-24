@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.smj.testboot.mapper.AppointMapper" >
+
+
+    <resultMap id="resultMap" type="com.smj.testboot.bean.ReportVo">
+        <result column="id" property="id" jdbcType="BIGINT"/>
+        <result column="sch_result_id" property="schResultId" jdbcType="VARCHAR"/>
+        <result column="corp_code" property="corpCode" jdbcType="VARCHAR"/>
+        <result column="dept_code" property="deptCode" jdbcType="VARCHAR"/>
+        <result column="dept_name" property="deptName" jdbcType="VARCHAR"/>
+        <result column="doct_code" property="doctCode" jdbcType="VARCHAR"/>
+        <result column="doct_name" property="doctName" jdbcType="VARCHAR"/>
+        <result column="app_num" property="appNum" jdbcType="INTEGER"/>
+        <result column="reg_num" property="regNum" jdbcType="INTEGER"/>
+        <result column="exp_num" property="expNum" jdbcType="INTEGER"/>
+        <result column="finish_num" property="finishNum" jdbcType="INTEGER"/>
+        <result column="cancel_num" property="cancelNum" jdbcType="INTEGER"/>
+        <result column="back_num" property="backNum" jdbcType="INTEGER"/>
+        <result column="total_num" property="totalNum" jdbcType="INTEGER"/>
+        <result column="channel_type" property="channelType" jdbcType="INTEGER"/>
+        <result column="sch_date" property="schDate" jdbcType="DATE"/>
+        <result column="create_time" property="createTime" jdbcType="TIMESTAMP"/>
+        <result column="update_time" property="updateTime" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="allFields">
+        corp_code, sch_result_id, dept_code, dept_name, doct_code, doct_name, channel_type, app_num, reg_num, exp_num, finish_num, cancel_num, back_num,
+        total_num, sch_date, create_time, update_time
+    </sql>
+
+
+
+    <update id="updateAppointChannelInfo">
+        update statis_sch_appoint_channel
+        <trim prefix="set" suffixOverrides=",">
+            <trim prefix="update_time =now(),sch_result_id =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} and channel_type = #{item.channelType} then #{item.schResultId}
+                </foreach>
+            </trim>
+            <trim prefix="corp_code =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} and channel_type = #{item.channelType} then #{item.corpCode}
+                </foreach>
+            </trim>
+            <trim prefix="dept_code =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} and channel_type = #{item.channelType} then #{item.deptCode}
+                </foreach>
+            </trim>
+            <trim prefix="dept_name =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} and channel_type = #{item.channelType} then #{item.deptName}
+                </foreach>
+            </trim>
+
+            <trim prefix="doct_code =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} and channel_type = #{item.channelType} then #{item.doctCode}
+                </foreach>
+            </trim>
+
+            <trim prefix="doct_name =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} and channel_type = #{item.channelType} then #{item.doctName}
+                </foreach>
+            </trim>
+
+            <trim prefix="channel_type =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} and channel_type = #{item.channelType} then #{item.channelType}
+                </foreach>
+            </trim>
+
+            <trim prefix="app_num =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} and channel_type = #{item.channelType} then #{item.appNum}
+                </foreach>
+            </trim>
+
+            <trim prefix="reg_num =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} and channel_type = #{item.channelType} then #{item.regNum}
+                </foreach>
+            </trim>
+
+            <trim prefix="exp_num =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} and channel_type = #{item.channelType} then #{item.expNum}
+                </foreach>
+            </trim>
+
+            <trim prefix="back_num =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} and channel_type = #{item.channelType} then #{item.backNum}
+                </foreach>
+            </trim>
+
+            <trim prefix="cancel_num =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} and channel_type = #{item.channelType} then #{item.cancelNum}
+                </foreach>
+            </trim>
+
+            <trim prefix="total_num =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} and channel_type = #{item.channelType} then #{item.totalNum}
+                </foreach>
+            </trim>
+
+            <trim prefix="sch_date =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} and channel_type = #{item.channelType} then #{item.schDate}
+                </foreach>
+            </trim>
+        </trim>
+        where
+        <foreach collection="list" index="index" item="item" separator="or" open="(" close=")">
+            sch_result_id = #{item.schResultId} and channel_type = #{item.channelType}
+        </foreach>
+    </update>
+
+
+    <update id="updateAppointInfo">
+        update statis_sch_appoint
+        <trim prefix="set" suffixOverrides=",">
+            <trim prefix="update_time =now(),sch_result_id =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} then #{item.schResultId}
+                </foreach>
+            </trim>
+            <trim prefix="corp_code =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} then #{item.corpCode}
+                </foreach>
+            </trim>
+            <trim prefix="dept_code =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} then #{item.deptCode}
+                </foreach>
+            </trim>
+            <trim prefix="dept_name =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} then #{item.deptName}
+                </foreach>
+            </trim>
+
+            <trim prefix="doct_code =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} then #{item.doctCode}
+                </foreach>
+            </trim>
+
+            <trim prefix="doct_name =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} then #{item.doctName}
+                </foreach>
+            </trim>
+
+            <trim prefix="app_num =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} then #{item.appNum}
+                </foreach>
+            </trim>
+
+            <trim prefix="reg_num =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} then #{item.regNum}
+                </foreach>
+            </trim>
+
+            <trim prefix="exp_num =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} then #{item.expNum}
+                </foreach>
+            </trim>
+
+            <trim prefix="finish_num =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} then #{item.finishNum}
+                </foreach>
+            </trim>
+
+            <trim prefix="back_num =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} then #{item.backNum}
+                </foreach>
+            </trim>
+
+            <trim prefix="cancel_num =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} then #{item.cancelNum}
+                </foreach>
+            </trim>
+
+            <trim prefix="total_num =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} then #{item.totalNum}
+                </foreach>
+            </trim>
+
+            <trim prefix="sch_date =case" suffix="end,">
+                <foreach collection="list" item="item" index="index">
+                    when sch_result_id=#{item.schResultId} then #{item.schDate}
+                </foreach>
+            </trim>
+        </trim>
+        where
+        sch_result_id in
+        <foreach collection="list" index="index" item="item" separator="," open="(" close=")">
+            #{item.schResultId}
+        </foreach>
+    </update>
+
+
+    <update id="update">
+        <foreach collection="list" item="item" separator=";" index="index">
+            update statis_sch_appoint
+            <set>
+                <if test="item.schResultId != null">
+                    sch_result_id = #{item.schResultId},
+                </if>
+                <if test="item.corpCode != null">
+                    corp_code = #{item.corpCode},
+                </if>
+                <if test="item.deptCode != null">
+                    dept_code = #{item.deptCode},
+                </if>
+                <if test="item.deptName != null">
+                    dept_name = #{item.deptName},
+                </if>
+                <if test="item.doctCode != null">
+                    doct_code = #{item.doctCode},
+                </if>
+                <if test="item.doctName != null">
+                    doct_name = #{item.doctName},
+                </if>
+                <if test="item.appNum != null">
+                    app_num = #{item.appNum},
+                </if>
+                <if test="item.regNum != null">
+                    reg_num = #{item.regNum},
+                </if>
+                <if test="item.expNum != null">
+                    exp_num = #{item.expNum},
+                </if>
+                <if test="item.backNum != null">
+                    back_num = #{item.backNum},
+                </if>
+                <if test="item.cancelNum != null">
+                    cancel_num = #{item.cancelNum},
+                </if>
+                <if test="item.totalNum != null">
+                    total_num = #{item.totalNum},
+                </if>
+                <if test="item.schDate != null">
+                    sch_date = #{item.schDate},
+                </if>
+                update_time = now()
+            </set>
+            where sch_result_id = #{item.schResultId}
+        </foreach>
+    </update>
+
+
+
+    <select id="selectAppointChannelInfoByDate" resultMap="resultMap">
+        select   <include refid="allFields"/>
+        from statis_sch_appoint_channel limit 10000
+    </select>
+
+    <select id="selectAppointInfoByDate" resultMap="resultMap">
+        select   corp_code, sch_result_id, dept_code, dept_name, doct_code, doct_name, app_num, reg_num, exp_num, finish_num, cancel_num, back_num,
+        total_num, sch_date, create_time, update_time
+        from statis_sch_appoint limit 500
+    </select>
+</mapper>
