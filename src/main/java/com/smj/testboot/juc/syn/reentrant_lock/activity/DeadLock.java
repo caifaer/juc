@@ -1,4 +1,4 @@
-package com.smj.testboot.juc.syn.reentrant_lock;
+package com.smj.testboot.juc.syn.reentrant_lock.activity;
 
 import lombok.extern.slf4j.Slf4j;
 
