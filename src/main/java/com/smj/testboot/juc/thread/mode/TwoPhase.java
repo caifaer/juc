@@ -1,4 +1,4 @@
-package com.smj.testboot.juc.monitor.mode;
+package com.smj.testboot.juc.thread.mode;
 
 import lombok.extern.slf4j.Slf4j;
 

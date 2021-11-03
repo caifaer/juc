@@ -1,11 +1,11 @@
-package com.smj.testboot.juc;
+package com.smj.testboot.juc.thread;
 
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 
-@Slf4j(topic = "c.TestState")
-public class TestState {
+@Slf4j(topic = "c.ThreadStateOfFive")
+public class ThreadStateOfFive {
     public static void main(String[] args) throws IOException {
         Thread t1 = new Thread("t1") {
             @Override
@@ -35,7 +35,7 @@ public class TestState {
         Thread t4 = new Thread("t4") {
             @Override
             public void run() {
-                synchronized (TestState.class) {
+                synchronized (ThreadStateOfFive.class) {
                     try {
                         Thread.sleep(1000000); // timed_waiting
                     } catch (InterruptedException e) {
@@ -61,7 +61,7 @@ public class TestState {
         Thread t6 = new Thread("t6") {
             @Override
             public void run() {
-                synchronized (TestState.class) { // blocked
+                synchronized (ThreadStateOfFive.class) { // blocked
                     try {
                         Thread.sleep(1000000);
                     } catch (InterruptedException e) {
