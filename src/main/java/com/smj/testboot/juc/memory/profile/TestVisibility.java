@@ -1,6 +1,6 @@
 package com.smj.testboot.juc.memory.profile;
 
-public class TestCanSee {
+public class TestVisibility {
 
 
 
