@@ -47,6 +47,9 @@ class TwoPhaseTermination {
             }
             starting = true;
         }
+
+
+        // 这一块代码 只会有一个线程执行
         monitorThread = new Thread(() -> {
             while (true) {
                 Thread current = Thread.currentThread();
