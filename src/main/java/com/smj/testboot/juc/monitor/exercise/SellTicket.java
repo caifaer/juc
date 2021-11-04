@@ -1,4 +1,4 @@
-package com.smj.testboot.juc.syn.exercise;
+package com.smj.testboot.juc.monitor.exercise;
 
 import lombok.extern.slf4j.Slf4j;
 
