@@ -144,6 +144,20 @@ public class AtomicApiTest {
     }
 
 
+    /**
+     * AtomicStampedReference 可以给原子引用加上版本号，追踪原子引用整个的变化过程，
+     * 如： A -> B -> A ->C ，
+     * 通过AtomicStampedReference，我们可以知道，引用变量中途被更改了几次。
+     * 但是有时候，并不关心引用变量更改了几次，只是单纯的关心是否更改过，所以就有了
+     * AtomicMarkableReference
+     *
+     * 比较值 以及比较布尔值
+     */
+
+
+
+
+
 
 
 }
