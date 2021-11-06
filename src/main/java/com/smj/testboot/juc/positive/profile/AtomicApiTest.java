@@ -6,15 +6,17 @@ import lombok.extern.slf4j.Slf4j;
 import java.math.BigDecimal;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicStampedReference;
 import java.util.function.IntUnaryOperator;
 
 @Slf4j(topic = "c.AtomicApiTest")
 public class AtomicApiTest {
 
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
 
 
+        stamped();
 
 
     }
@@ -74,6 +76,72 @@ public class AtomicApiTest {
 
 
 
+    static AtomicReference<String> ref = new AtomicReference("A");
+
+    public static void ABA() throws InterruptedException {
+
+        // 先来看 ABA 问题
+        // 线程在cas过程中 能否知道 该值有没有被其他线程修改过
+        // 因为 假如你原来的值 是A 后来线程b 修改为了B 线程c又修改为了A  此时当前线程时无法感知的。
+        String prev = ref.get();
+        other();
+        Thread.sleep(1);
+        // 尝试改为 C
+        log.debug("change A->C {}", ref.compareAndSet(prev, "C"));// 会输出 C
+
+
+    }
+
+    private static void other() {
+        new Thread(() -> {
+            log.debug("change A->B {}", ref.compareAndSet(ref.get(), "B"));
+        }, "t1").start();
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        new Thread(() -> {
+            log.debug("change B->A {}", ref.compareAndSet(ref.get(), "A"));
+        }, "t2").start();
+    }
+
+
+    static AtomicStampedReference<String> stamped = new AtomicStampedReference("A", 0);
+
+    // 此时就可以 加上版本号来处理  可以使用AtomicStampedReference;
+    // 不仅比较值 还要比较版本号
+    public static void stamped() throws InterruptedException {
+
+        String prev = stamped.getReference();
+        //获取版本号
+        int stamp = stamped.getStamp();
+        log.info("{}", stamp);
+        otherStamped();
+        Thread.sleep(1);
+        // 尝试改为 C   传入版本号 以及版本号+1
+        log.debug("change A->C {}", stamped.compareAndSet(prev, "C", stamp, stamp + 1));
+
+
+    }
+
+    private static void otherStamped() {
+        new Thread(() -> {
+            int stamp = stamped.getStamp();
+            log.info("{}", stamp);
+            log.debug("change A->B {}", stamped.compareAndSet(stamped.getReference(), "B", stamp, stamp + 1));
+        }, "t1").start();
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        new Thread(() -> {
+            int stamp = stamped.getStamp();
+            log.info("{}", stamp);
+            log.debug("change B->A {}", stamped.compareAndSet(stamped.getReference(), "A", stamp, stamp + 1));
+        }, "t2").start();
+    }
 
 
 
