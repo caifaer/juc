@@ -3,7 +3,9 @@ package com.smj.testboot.juc.positive.profile;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.math.BigDecimal;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntUnaryOperator;
 
 @Slf4j(topic = "c.AtomicApiTest")
@@ -52,5 +54,28 @@ public class AtomicApiTest {
             }
         }
     }
+
+    // 原子引用 支持泛型 其实跟上面的差不多
+    public static void reference() {
+
+        AtomicReference<BigDecimal> atomicReference = new AtomicReference("1000");
+
+        while (true) {
+            // 获取到当前值
+            BigDecimal prev = atomicReference.get();
+            // 但是这里你要知道  这个操作你是写死了 要有其他的操作 就得再写一个方法 所以使用lambda将操作参数化
+            BigDecimal next = prev.subtract(prev);
+            if (atomicReference.compareAndSet(prev, next)) {
+                break;
+            }
+        }
+
+    }
+
+
+
+
+
+
 
 }
