@@ -210,7 +210,7 @@ class BlockingQueue<T> {
             while (queue.isEmpty()) {
                 try {
                     // 这里这样写的原因是  可能会有虚假唤醒  所以你再次循环的时候 可能会多等待
-                    // 测试你要知道 这个方法的返回值的含义 -- 返回的就是 剩余的时间。
+                    // 测试你要知道 这个方法的返回值的含义 -- 返回的就是 剩余的时间 -- 如果在nanosTimesout之前唤醒，那么返回值 = nanosTimeout - 消耗时间。
                     // 所以直接覆盖掉原本的 nanos就好了
                     if (nanos <= 0) {
                         return null;
