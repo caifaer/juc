@@ -207,12 +207,115 @@ public class AqsSourceCode {
  *              LockSupport.unpark(s.thread);
  *          }
  *      }
- *
- *
- *
+ */
 
+
+/**
+ *
+ *
+ *           前提是获取到锁  所以是线程安全的操作
+ *           public final void await() throws InterruptedException {
+ *             if (Thread.interrupted())
+ *                 throw new InterruptedException();
+ *             Node node = addConditionWaiter();
+ *             int savedState = fullyRelease(node);
+ *             int interruptMode = 0;
+ *             while (!isOnSyncQueue(node)) {
+ *                 LockSupport.park(this);  // 进行 park
+ *                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
+ *                     break;
+ *             }
+ *             if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
+ *                 interruptMode = REINTERRUPT;
+ *             if (node.nextWaiter != null) // clean up if cancelled
+ *                 unlinkCancelledWaiters();
+ *             if (interruptMode != 0)
+ *                 reportInterruptAfterWait(interruptMode);
+ *         }
+ *
+ *
+ *         private Node addConditionWaiter() {
+ *             Node t = lastWaiter;
+ *             // If lastWaiter is cancelled, clean out.
+ *             if (t != null && t.waitStatus != Node.CONDITION) {
+ *                 unlinkCancelledWaiters();
+ *                 t = lastWaiter;
+ *             }
+ *             // 创建wait节点  状态是 -2
+ *             Node node = new Node(Thread.currentThread(), Node.CONDITION);
+ *             if (t == null)
+ *                 firstWaiter = node;
+ *             else
+ *                 t.nextWaiter = node;
+ *             lastWaiter = node;
+ *             return node;
+ *         }
+ *
+ *         // 释放掉锁  因为可能加了多次锁（锁重入）  多以要
+ *         final int fullyRelease(Node node) {
+ *         boolean failed = true;
+ *         try {
+ *             int savedState = getState();
+ *             if (release(savedState)) {
+ *                 failed = false;
+ *                 return savedState;
+ *             } else {
+ *                 throw new IllegalMonitorStateException();
+ *             }
+ *         } finally {
+ *             if (failed)
+ *                 node.waitStatus = Node.CANCELLED;
+ *         }
+ *     }
+ *     // tryRelease 减为0  穿参的时候 传的就是加锁的次数 所以就直接减为0 了
+ *     //  然后唤醒 等待队列中的 线程节点
+ *     public final boolean release(int arg) {
+ *         if (tryRelease(arg)) {
+ *             Node h = head;
+ *             if (h != null && h.waitStatus != 0)
+ *                 unparkSuccessor(h);
+ *             return true;
+ *         }
+ *         return false;
+ *     }
  *
  *
  *
+ *          public final void signal() {
+ *             if (!isHeldExclusively())
+ *                 throw new IllegalMonitorStateException();
+ *             Node first = firstWaiter;
+ *             if (first != null)
+ *                 doSignal(first);
+ *         }
+ *
+ *         // 其实就是从 条件变量的队列中 断开 放到 阻塞队列队尾中
+ *         private void doSignal(Node first) {
+ *             do {
+ *                 if ( (firstWaiter = first.nextWaiter) == null) {
+ *                    lastWaiter = null;
+ *                 }
+ *                 first.nextWaiter = null;
+ *             } while (!transferForSignal(first) &&
+ *                      (first = firstWaiter) != null);
+ *                      // 如果转移失败 因为可能会被打断 或 超时
+ *                      // 如果还有下一个节点  就尝试唤醒下一个 节点
+ *         }
+ *
+ *
+ *         final boolean transferForSignal(Node node) {
+ *              // 更新状态
+ *              if(!compareAndSetWaitStatus(node,Node.CONDITION,0)) {
+ *                  return false;
+ *              }
+ *              // 连接到 阻塞队列 队尾  返回前驱节点
+ *              Node p=enq(node);
+ *              int ws=p.waitStatus;
+ *              // 改为 -1
+ *              if(ws>0||!compareAndSetWaitStatus(p,ws,Node.SIGNAL)) {
+ *                  LockSupport.unpark(node.thread);
+ *              }
+ *              return true;
+ *          }
  *
  */
