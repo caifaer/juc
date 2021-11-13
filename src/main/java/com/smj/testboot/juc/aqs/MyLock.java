@@ -1,17 +1,31 @@
 package com.smj.testboot.juc.aqs;
 
 import com.sun.org.apache.bcel.internal.generic.IF_ACMPEQ;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.AbstractQueuedSynchronizer;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 
+
+@Slf4j(topic = "c.TestMyLock")
 class TestMyLock {
     public static void main(String[] args) {
 
+        ReentrantLock reentrantLock = new ReentrantLock();
 
+        new Thread(() -> {
+            log.info("加锁t1");
+            reentrantLock.lock();
+        }).start();
+
+        new Thread(() -> {
+            log.info("加锁t2");
+            reentrantLock.lock();
+        }).start();
 
 
     }
