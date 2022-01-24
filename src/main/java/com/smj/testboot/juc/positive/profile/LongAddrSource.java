@@ -33,7 +33,7 @@ public class LongAddrSource  {
      public void add(long x) {
         Cell[] as; long b, v; int m; Cell a;
                 * 如果一下两种条件则继续执行if内的语句
-                * 1. cells数组不为null（不存在争用的时候，cells数组一定为null，一旦对base的cas操作失败，才会初始化cells数组）
+                * 1. cells数组不为null  （不存在争用的时候，cells数组一定为null，因为cells数组是懒加载的，有竞争的时候才会去创建。一旦对base的cas操作失败，才会初始化cells数组）
                 * 2. 如果cells数组为null，如果casBase执行成功，则直接返回，如果casBase方法执行失败（casBase失败，说明第一次争用冲突产生，需要对cells数组初始化）进入if内；
                 * casBase方法很简单，就是通过UNSAFE类的cas设置成员变量base的值为base+要累加的值
                 * casBase执行成功的前提是无竞争，这时候cells数组还没有用到为null，可见在无竞争的情况下是类似于AtomticInteger处理方式，使用cas做累加。
@@ -44,7 +44,7 @@ public class LongAddrSource  {
          *1. as == null ： cells数组未被初始化，成立则直接进入if执行cell初始化
          *2. (m = as.length - 1) < 0： cells数组的长度为0
          *条件1与2都代表cells数组没有被初始化成功，初始化成功的cells数组长度为2；
-         *3. (a = as[getProbe() & m]) == null ：如果cells被初始化，且它的长度不为0，则通过getProbe方法获取当前线程Thread的threadLocalRandomProbe变量的值，初始为0，然后执行threadLocalRandomProbe&(cells.length-1 ),相当于m%cells.length;如果cells[threadLocalRandomProbe%cells.length]的位置为null，这说明这个位置从来没有线程做过累加，需要进入if继续执行，在这个位置创建一个新的Cell对象；
+         *3. 这里可以简单的理解为当前线程有没有对应的cell被创建  (a = as[getProbe() & m]) == null ：如果cells被初始化，且它的长度不为0，则通过getProbe方法获取当前线程Thread的threadLocalRandomProbe变量的值，初始为0，然后执行threadLocalRandomProbe&(cells.length-1 ),相当于m%cells.length;如果cells[threadLocalRandomProbe%cells.length]的位置为null，这说明这个位置从来没有线程做过累加，需要进入if继续执行，在这个位置创建一个新的Cell对象；
          *4. !(uncontended = a.cas(v = a.value, v + x))：尝试对cells[threadLocalRandomProbe%cells.length]位置的Cell对象中的value值做累加操作,并返回操作结果,如果失败了则进入if，重新计算一个threadLocalRandomProbe；
          如果进入if语句执行longAccumulate方法,有三种情况
          1. 前两个条件代表cells没有初始化，
@@ -88,9 +88,9 @@ public class LongAddrSource  {
             if ((as = cells) != null && (n = as.length) > 0) {
             //  创建累加单元 也就是数组中的cell对象
                  *内部小分支一：这个是处理add方法内部if分支的条件3：
-                 * 如果被hash到的位置为null，说明没有线程在这个位置设置过值，没有竞争，可以直接使用，则用x值作为初始值创建一个新的Cell对象，对cells数组使用cellsBusy加锁，然后将这个Cell对象放到cells[m%cells.length]位置上
+                 * 如果被hash到的位置为null，(也就是说这个线程 这个位置上没有累加单元 即cells存在  但是没有cell对象)说明没有线程在这个位置设置过值，没有竞争，可以直接使用，则用x值作为初始值创建一个新的Cell对象，对cells数组使用cellsBusy加锁，然后将这个Cell对象放到cells[m%cells.length]位置上
                 if ((a = as[(n - 1) & h]) == null) {
-                    //cellsBusy == 0 代表当前没有线程cells数组做修改
+                    //cellsBusy == 0 --- 未加锁  代表当前没有线程cells数组做修改
                     if (cellsBusy == 0) {
                         //将要累加的x值作为初始值创建一个新的Cell对象， 还未放到数组中
                         Cell r = new Cell(x);
@@ -158,7 +158,7 @@ public class LongAddrSource  {
                     collide = false;
                     continue;                   // Retry with expanded table
                 }
-                //为当前线程重新计算hash值
+                //为当前线程重新计算hash值   换一个累加单元继续累加
                 h = advanceProbe(h);
 
 //这个大的分支处理add方法中的条件1与条件2成立的情况，如果cell表还未初始化或者长度为0，先尝试获取cellsBusy锁。
