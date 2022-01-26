@@ -54,11 +54,15 @@ public class AqsSourceCode {
  *         Node pred = tail;
  *         // 队列尾节点存在
  *         if (pred != null) {
- *         // 前驱
+ *             // 当前节点node的前驱指向 tail节点
  *             node.prev = pred;
- *              如果队列尾节点存在，就使用CAS（compareAndSetTail）将node直接放入队列
+ *              如果队列尾节点存在，就使用CAS（compareAndSetTail）将tail设置为node
+ *              其实只是 指针的更改 相当于让原来的tail节点指向 node节点  此时node节点就是尾节点了
  *             if (compareAndSetTail(pred, node)) {
- *             // 后继
+ *                      // 后继
+ *                   //如果CAS尝试成功，就说明"设置当前节点node的前驱"与"CAS设置tail"之间 没有别的线程设置tail成功
+ *                   // (cas 就很巧妙 判断尾节点有没有被其他线程取代  如果没有  就使用node节点取代tail)
+ *                 //只需要将"之前的tail"的后继节点指向node即可
  *                 pred.next = node;
  *                 return node;
  *             }
@@ -97,7 +101,7 @@ public class AqsSourceCode {
  *
  *
  *      private final boolean compareAndSetTail(Node expect, Node update) {
- *          //当前的tail字段和期望值exepct，即t进行比较，一定是相等的啊，以为t=tail么，所以更新赋值为update，
+ *          //当前的tail字段和期望值exepct，即t进行比较，一定是相等的啊，因为t=tail，所以更新赋值为update，
  *          //即新传进来的node（Thread A）
  *          return unsafe.compareAndSwapObject(this, tailOffset, expect, update);
  *      }
@@ -123,8 +127,10 @@ public class AqsSourceCode {
  *                     setHead(node);  // 因为已经获取到锁了 所以这个线程节点就没用了  此时清空线程节点数据 充当头节点
  *                     p.next = null; // help GC   将原来的头节点 断开连接
  *                     failed = false;
- *                     return interrupted;
+ *                     return interrupted; // 退出自旋
  *                 }
+ *
+ *                 // 不是第一个节点  就给我暂停
  *                 if (shouldParkAfterFailedAcquire(p, node) &&
  *                     parkAndCheckInterrupt())
  *                     interrupted = true;
@@ -137,18 +143,18 @@ public class AqsSourceCode {
  *
  *     private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {
  *         int ws = pred.waitStatus;
- *         if (ws == Node.SIGNAL) {
+ *         if (ws == Node.SIGNAL) { // Node.SIGNAL = -1;
  *              return true;
  *         }
  *         if(ws>0){
- *         // do while循环 作用就是清除掉  无用的节点
+ *         // do while循环 作用就是清除掉  无用的节点   ws>0 即Node.CANCELLED = 1 被取消了
  *              do{
  *                  node.prev=pred=pred.prev;
  *              }while(pred.waitStatus>0);
  *          pred.next=node;
  *        }else{
- *             // 这里就是说 你要把前驱节点的 状态 由 ws 变成 -1 （-1代表 有责任唤醒后继节点） 然后下一次循环的时候 就是true了
- *             // 一开始状态都是 0
+ *              // 走到这里就是说 你的状态是0    一开始状态都是 0
+ *             // 然后要把前驱节点的 状态 由 ws 变成 -1 （-1代表 有责任唤醒后继节点） 然后下一次循环的时候 就是true了
  *              compareAndSetWaitStatus(pred,ws,Node.SIGNAL);
  *          }
  *              return false;
@@ -186,8 +192,8 @@ public class AqsSourceCode {
  *     }
  *
  *      头节点不为null 并且状态不等于0  就会来这里 进行解锁
- *      此时 被解锁的线程 如果是 对头节点  就是parkAndCheckInterrupt 这个方法这里 继续循环
- *      然后 运行到 tryAcquire 这里  会获取到锁  此时会进入if块  重新设置哑节点  也就是头节点
+ *      此时 被解锁的线程 如果是 队头节点  就会被唤醒  此时就会更新interrupted状态  就是parkAndCheckInterrupt 这个方法这里 继续循环
+ *      然后 运行到 tryAcquire 这里  会获取到锁  此时会进入if块  重新设置哑节点  也就是头节点  相当关于在这里重新设置头节点 将原来等待的线程节点释放
  *      将原来的哑节点断开连接  将之前释放的锁的节点设置为哑节点
  *     private void unparkSuccessor(Node node) {
  *          int ws=node.waitStatus;
@@ -195,6 +201,7 @@ public class AqsSourceCode {
  *              compareAndSetWaitStatus(node,ws,0);
  *          }
  *          Node s=node.next;
+ *          // 若后继结点为空，或状态为CANCEL = 1（已失效），则从后尾部往前遍历找到最前的一个处于正常阻塞状态的结点进行唤醒，直到节点重合（即等于当前节点）
  *          if(s==null||s.waitStatus>0){
  *              s=null;
  *              for(Node t=tail;t!=null&&t!=node;t=t.prev) {
@@ -204,9 +211,32 @@ public class AqsSourceCode {
  *              }
  *          }
  *          if(s!=null) {
+ *              // 存在下一个节点  并且该节点状态是-1  则唤醒下一个节点
  *              LockSupport.unpark(s.thread);
  *          }
  *      }
+ *       //  为什么是 从尾部开始遍历？
+ *  //                问题出在enq 方法中  在初始话节点的时候
+ *      private Node enq(final Node node) {
+ *         for (;;) {
+ *             Node t = tail;
+ *             if (t == null) { // Must initialize
+ *                 if (compareAndSetHead(new Node()))
+ *                     tail = head;
+ *             } else {
+ *                 node.prev = t;
+ *                 if (compareAndSetTail(t, node)) {
+ *                     t.next = node;
+ *                     return t;
+ *                 }
+ *             }
+ *         }
+ *     }
+ *     添加节点的时候 是cas操作  但是if语句中并没有线程安全的操作
+ *     线程cas操作成功之后  要更新后继节点的时候  是会发生线程切换的  此时如果发生线程切换  该线程的后继几点还是null
+ *     此时如果某个线程去执行 unparkSuccessor的时候  从头到尾遍历  就会漏掉节点。
+ *     那为什么尾部可以列？  其最根本的原因在于：node.prev = t;先于CAS执行，也就是说，你在将当前节点置为尾部之前就已经把前驱节点赋值了，自然不会出现prev=null的情况
+ *
  */
 
 
@@ -317,5 +347,24 @@ public class AqsSourceCode {
  *              }
  *              return true;
  *          }
+ *
+ *
+ *
+ *
+ *          // 主要是 公平锁 会使用     判断队列中 是否有等待的线程
+ *          //  返回true  表示有   所以要进行排队
+ *          //  返回false  表示没有
+ *          public final boolean hasQueuedPredecessors() {
+ *              Node t = tail; // Read fields in reverse initialization order
+ *              Node h = head;
+ *              Node s;
+ *              return h != t && ((s = h.next) == null || s.thread != Thread.currentThread());
+ *              // 返回false的情况
+ *              //      1. h != t 返回false 即 h == t 等于null是空链表   无需等待
+ *              //      2. h != t 返回true  说明头尾指向头一个节点  即只有一个节点。 也不需要排队  因为第一个节点持有同步状态, 不参与排队。 如果是第三个节点就只能等待前面的节点释放同步状态。
+ *                              // 2.1 即(s = h.next) == null返回false 以及 s.thread != Thread.currentThread()返回false
+ *                              // 2.2 (s = h.next) == null返回false 即有等待的节点
+ *                              // 2.3 s.thread != Thread.currentThread()返回false  即 当前线程和等待线程是相同的    不相同自然就得排队
+ *     }
  *
  */
