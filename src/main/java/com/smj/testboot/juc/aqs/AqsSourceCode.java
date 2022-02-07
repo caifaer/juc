@@ -94,6 +94,13 @@ public class AqsSourceCode {
  *         }
  *     }
  *
+ *     // 补充
+ *     //     1. 初始时       head = tail = null
+ *     //     2. 初始化       head = tail = new Node()  哑节点
+ *     //     3. 添加新节点   Node t = tail;  node.prev = t;   tail = node;   t.next = node;  return t;
+ *
+ *
+ *
  *     private final boolean compareAndSetHead(Node update) {
  *          //当前的head字段，和null值比对，默认是null，所以相等，所以赋值为update，也就是new node()
  *          return unsafe.compareAndSwapObject(this, headOffset, null, update);
@@ -102,7 +109,7 @@ public class AqsSourceCode {
  *
  *      private final boolean compareAndSetTail(Node expect, Node update) {
  *          //当前的tail字段和期望值exepct，即t进行比较，一定是相等的啊，因为t=tail，所以更新赋值为update，
- *          //即新传进来的node（Thread A）
+ *          //即新传进来的node（Thread A）  也就是让tail 指向新的节点node
  *          return unsafe.compareAndSwapObject(this, tailOffset, expect, update);
  *      }
  *
@@ -130,13 +137,15 @@ public class AqsSourceCode {
  *                     return interrupted; // 退出自旋
  *                 }
  *
- *                 // 不是第一个节点  就给我暂停
+ *                 // 获取锁失败后  进行暂停
  *                 if (shouldParkAfterFailedAcquire(p, node) &&
  *                     parkAndCheckInterrupt())
+ *                     //线程在处于等待期间被中断  所以后续会进行自我中断一次
  *                     interrupted = true;
  *             }
  *         } finally {
  *             if (failed)
+ *             //如果tryAcquire出现异常那么取消当前结点的获取，毕竟tryAcquire是留给子类实现的
  *                 cancelAcquire(node);
  *         }
  *     }
@@ -164,7 +173,7 @@ public class AqsSourceCode {
  *       private final boolean parkAndCheckInterrupt() {
  *         //  所以就是对头线程节点 尝试了很多次还是没有获取锁  就会被park 住  等待前驱节点去unpark
  *         LockSupport.park(this);
- *         // 返回打断标记 并清除打断标记
+ *         // 返回打断标记 并清除打断标记    这里是说 如果你这个线程在外面被打断了   此时还要进行一次自我打断
  *         return Thread.interrupted();
  *     }
  *
@@ -183,7 +192,7 @@ public class AqsSourceCode {
  *     //  简单来说 就是更改 state的状态为0  因为是可重如锁的缘故 state可能会大于1  然后owner属性置为null
  *         if (tryRelease(arg)) {
  *             Node h = head;
- *             // 释放之后 要唤醒后继节点  前提就是 头节点不为null 并且状态不等于0
+ *             // 释放之后 要唤醒后继节点  前提就是 头节点不为null 并且状态不等于0(等于 -1)
  *             if (h != null && h.waitStatus != 0)
  *                 unparkSuccessor(h);
  *             return true;
@@ -243,15 +252,27 @@ public class AqsSourceCode {
 /**
  *
  *
- *           前提是获取到锁  所以是线程安全的操作
+ *           前提是获取到锁  所以是线程安全的操作  类似于  wait notify
+ *           每个条件变量其实就对应着一个等待队列，其实现类是 ConditionObject
+ *                 开始 Thread-0 持有锁，调用 await，进入 ConditionObject 的 addConditionWaiter 流程
+ *                 创建新的 Node 状态为 -2（Node.CONDITION），关联 Thread-0，加入 等待队列尾部
+ *
  *           public final void await() throws InterruptedException {
+ *             // 标记有打断标记  抛出异常
  *             if (Thread.interrupted())
  *                 throw new InterruptedException();
+ *
+ *             //  创建一个新的节点加入condition队列中，节点状态为condition
  *             Node node = addConditionWaiter();
+ *
+ *             // 释放该线程持有的锁  并唤醒 同步队列中的下一个节点
  *             int savedState = fullyRelease(node);
+ *
  *             int interruptMode = 0;
  *             while (!isOnSyncQueue(node)) {
- *                 LockSupport.park(this);  // 进行 park
+ *                  // 当前线程 进行阻塞
+ *                 LockSupport.park(this);
+ *                 // 上面已经park了   如果此时 unpark  要判断是在哪种情况下unpark的
  *                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
  *                     break;
  *             }
@@ -266,12 +287,13 @@ public class AqsSourceCode {
  *
  *         private Node addConditionWaiter() {
  *             Node t = lastWaiter;
- *             // If lastWaiter is cancelled, clean out.
+ *             // 最后一个节点是取消状态  清理掉
  *             if (t != null && t.waitStatus != Node.CONDITION) {
  *                 unlinkCancelledWaiters();
+ *                 //指向 清理之后 状态是 CONDITION的节点
  *                 t = lastWaiter;
  *             }
- *             // 创建wait节点  状态是 -2
+ *             // 创建新的 wait节点  状态是 -2    单向链表
  *             Node node = new Node(Thread.currentThread(), Node.CONDITION);
  *             if (t == null)
  *                 firstWaiter = node;
@@ -281,11 +303,40 @@ public class AqsSourceCode {
  *             return node;
  *         }
  *
+ *
+ *         // 清理掉链表中的状态为cancelled状态的节点
+ *         private void unlinkCancelledWaiters() {
+ *              Node t = firstWaiter;
+ *              Node trail = null;
+ *              while (t != null) {
+ *                  // 保存下一个节点
+ *                  Node next = t.nextWaiter;
+ *                  // 如果该节点的状态不等于conditon,则该节点需要在链表中删除
+ *                  if (t.waitStatus != Node.CONDITION) {
+ *                      // 断开连接
+ *                      t.nextWaiter = null;
+ *
+ *                      if (trail == null)
+ *                          firstWaiter = next;
+ *                      else
+ *                          trail.nextWaiter = next;
+ *                      if (next == null)
+ *                          lastWaiter = trail;
+ *                  }
+ *                  else
+ *                      trail = t;
+ *
+ *                  t = next;
+ *
+ *          }
+ *
  *         // 释放掉锁  因为可能加了多次锁（锁重入）  多以要
  *         final int fullyRelease(Node node) {
  *         boolean failed = true;
  *         try {
  *             int savedState = getState();
+ *
+ *             // 彻底释放锁，并且唤醒同步队列中的下一个线程
  *             if (release(savedState)) {
  *                 failed = false;
  *                 return savedState;
@@ -309,9 +360,52 @@ public class AqsSourceCode {
  *         return false;
  *     }
  *
+ *     // 判断当前节点是否在 同步队列 中，返回 false 表示不在，返回true 表示如果不在。   其实本质还是判断该节点有没有被 signal
+ *     // 为什么要判断是否在 同步队列中？
+ *     //     因为当线程调用signal或signalAll时,会从firstWaiter节点开始，将节点依次从 等待队列 中移除，并通过enq方法重新添加到 同步队列 中
+ *                因此当其他线程调用signal或者signalAll方法时，该线程可能从条件（等待）队列中移除，并重新加入到同步队列中
+ *                1. 如果没有，则阻塞当前线程，同时调用checkInterruptWhileWaiting检测当前线程在等待过程中是否发生中断，设置interruptMode表示中断状态。
+ *                2. 如果isOnSyncQueue方法判断出当前线程已经处于同步队列中了，则跳出while循环
  *
  *
+ *     final boolean isOnSyncQueue(Node node) {
+ *           //  同步队列中的状态 不会是CONDITION   同步队列中的前驱节点 不会为null  因为有一个哑节点
+ *          if (node.waitStatus == Node.CONDITION || node.prev == null)
+ *              return false;
+ *          // 在等待队列里，node.next 是等于空的，不等于空就是在同步队列当中  这里注意  prev和next专属于同步队列
+ *          if (node.next != null) // If has successor, it must be on queue
+ *              return true;
+ *            // 否则就遍历整个 同步队列 判断是否在同步队列中
+ *           return findNodeFromTail(node);
+ *      }
+ *
+ *
+ *      // checkInterruptWhileWaiting方法根据中断发生的时机返回后续需要处理这次中断的方式，如果发生中断，退出循环
+ *      //  THROW_IE = -1  中断在 signalled之前   (在退出等待时抛出异常)
+ *      //  REINTERRUPT = 1 再次中断在 signalled之后   (在退出等待时重新设置打断状态)
+ *      //  0     没有中断
+ *      private int checkInterruptWhileWaiting(Node node) {
+ *          return Thread.interrupted() ?
+ *              (transferAfterCancelledWait(node) ? THROW_IE : REINTERRUPT) : 0;
+ *      }
+ *
+ *      final boolean transferAfterCancelledWait(Node node) {
+ *           //  cas成功  则说明中断发生时，没有signal的调用，因为signal方法会将状态设置为0；此时加到同步队列中  返回true  表示中断在signal之前；
+ *           //  cas失败  则判断该节点是否在同步队列中 如果不在 让步其他线程 直到当前的node已经被signal方法添加到同步队列中；
+ *          if (compareAndSetWaitStatus(node, Node.CONDITION, 0)) {
+ *              enq(node);
+ *              return true;
+ *          }
+ *           while(!isOnSyncQueue(node)) {
+ *             Thread.yield();
+ *           }
+ *
+ *          return false;
+ *     }
+ *
+ *          //  signal 的主要作用就是 将等待队列中的节点 放到同步队列中  然后在同步队列中进行竞争。
  *          public final void signal() {
+ *          //前提是持有锁 不然抛出异常
  *             if (!isHeldExclusively())
  *                 throw new IllegalMonitorStateException();
  *             Node first = firstWaiter;
@@ -319,13 +413,16 @@ public class AqsSourceCode {
  *                 doSignal(first);
  *         }
  *
- *         // 其实就是从 条件变量的队列中 断开 放到 阻塞队列队尾中
+ *         // 其实就是从 条件变量的队列中 断开 放到 同步队列队尾中
+ *         // 这里只会唤醒一个  所以有   first.nextWaiter = null;  后续就会跳出循环
  *         private void doSignal(Node first) {
  *             do {
+ *                 // 将头节点从 等待队列中 移除
  *                 if ( (firstWaiter = first.nextWaiter) == null) {
  *                    lastWaiter = null;
  *                 }
  *                 first.nextWaiter = null;
+ *                 // 再调用transferForSignal()方法将节点添加到同步队列中:
  *             } while (!transferForSignal(first) &&
  *                      (first = firstWaiter) != null);
  *                      // 如果转移失败 因为可能会被打断 或 超时
@@ -334,14 +431,15 @@ public class AqsSourceCode {
  *
  *
  *         final boolean transferForSignal(Node node) {
- *              // 更新状态
+ *              //  cas失败  说明已经被取消 继续循环 换一个节点
+ *              //  如果成功之后 被取消   那也没关系  后面获取锁的时候 依旧会被移除掉
  *              if(!compareAndSetWaitStatus(node,Node.CONDITION,0)) {
  *                  return false;
  *              }
- *              // 连接到 阻塞队列 队尾  返回前驱节点
+ *              // 连接到 同步队列 队尾  返回其前驱节点
  *              Node p=enq(node);
  *              int ws=p.waitStatus;
- *              // 改为 -1
+ *              //  ws大于0 也就是取消了   或者  cas 改为 -1失败   执行unpark
  *              if(ws>0||!compareAndSetWaitStatus(p,ws,Node.SIGNAL)) {
  *                  LockSupport.unpark(node.thread);
  *              }
