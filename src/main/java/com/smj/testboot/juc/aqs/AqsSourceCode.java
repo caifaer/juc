@@ -1,7 +1,38 @@
 package com.smj.testboot.juc.aqs;
 
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
+
 public class AqsSourceCode {
 
+
+    static final ReentrantLock lock = new ReentrantLock();
+
+
+    public static void main(String[] args) {
+
+
+        Thread thread = new Thread(() -> {
+            lock.lock();
+            Condition condition = lock.newCondition();
+            try {
+                condition.await();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+        });
+
+        thread.start();
+
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        thread.interrupt();
+
+    }
 
 
 
