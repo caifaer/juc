@@ -283,13 +283,18 @@ public class AqsSourceCode {
 /**
  *
  *
+ *
+ *              注:  1. 先 interrupt   此时park  会失效
+ *                   2. 先 park  后续 interrupt 依旧会失效
+ *                   总之  不管怎样 只要有interrupt  park都会失效
+ *
  *           前提是获取到锁  所以是线程安全的操作  类似于  wait notify
  *           每个条件变量其实就对应着一个等待队列，其实现类是 ConditionObject
  *                 开始 Thread-0 持有锁，调用 await，进入 ConditionObject 的 addConditionWaiter 流程
  *                 创建新的 Node 状态为 -2（Node.CONDITION），关联 Thread-0，加入 等待队列尾部
  *
  *           public final void await() throws InterruptedException {
- *             // 标记有打断标记  抛出异常
+ *             // 标记有打断标记  抛出异常   可以看出这个一个可打断的
  *             if (Thread.interrupted())
  *                 throw new InterruptedException();
  *
@@ -300,10 +305,10 @@ public class AqsSourceCode {
  *             int savedState = fullyRelease(node);
  *
  *             int interruptMode = 0;
+ *             //  while之前 已经释放了锁  此时如果有线程拿到了锁 可能会signal/signalAll 就会将等待队列的节点放到同步队列中
+ *             //  既然都已经在同步队列中  就不需要park了  直接退出while循环  自旋的获取锁即可
  *             while (!isOnSyncQueue(node)) {
- *                  // 当前线程 进行阻塞
  *                 LockSupport.park(this);
- *                 // 上面已经park了   如果此时 unpark  要判断是在哪种情况下unpark的
  *                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
  *                     break;
  *             }
@@ -413,7 +418,7 @@ public class AqsSourceCode {
  *
  *      // checkInterruptWhileWaiting方法根据中断发生的时机返回后续需要处理这次中断的方式，如果发生中断，退出循环
  *      //  THROW_IE = -1  中断在 signalled之前   (在退出等待时抛出异常)
- *      //  REINTERRUPT = 1 再次中断在 signalled之后   (在退出等待时重新设置打断状态)
+ *      //  REINTERRUPT = 1  中断在 signalled之后   (在退出等待时重新设置打断状态)
  *      //  0     没有中断
  *      private int checkInterruptWhileWaiting(Node node) {
  *          return Thread.interrupted() ?
@@ -422,11 +427,14 @@ public class AqsSourceCode {
  *
  *      final boolean transferAfterCancelledWait(Node node) {
  *           //  cas成功  则说明中断发生时，没有signal的调用，因为signal方法会将状态设置为0；此时加到同步队列中  返回true  表示中断在signal之前；
+ *           //                  此时就将线程放到 同步队列中   然后后续会抛出异常
  *           //  cas失败  则判断该节点是否在同步队列中 如果不在 让步其他线程 直到当前的node已经被signal方法添加到同步队列中；
  *          if (compareAndSetWaitStatus(node, Node.CONDITION, 0)) {
  *              enq(node);
  *              return true;
  *          }
+ *
+ *          // 走到这里意味着   中断在  signal之后   所以要等到该线程在同步队列即可
  *           while(!isOnSyncQueue(node)) {
  *             Thread.yield();
  *           }
@@ -495,5 +503,70 @@ public class AqsSourceCode {
  *                              // 2.2 (s = h.next) == null返回false 即有等待的节点
  *                              // 2.3 s.thread != Thread.currentThread()返回false  即 当前线程和等待线程是相同的    不相同自然就得排队
  *     }
+ *
+ *
+ *
+ *
+ *
+ *
+ *     //  取消获取锁意味着结点的出队。
+ *     private void cancelAcquire(Node node) {
+ *
+ *         if (node == null)
+ *             return;
+ *
+ *         node.thread = null;
+ *
+ *         // 跳过所有被取消的前置结点
+ *         Node pred = node.prev;
+ *         while (pred.waitStatus > 0)
+ *             node.prev = pred = pred.prev;
+ *
+ *         Node predNext = pred.next;
+ *
+ *         node.waitStatus = Node.CANCELLED;
+ *
+ *         1. 节点是尾部节点  此时将该节点得前驱节点置为 尾节点   然后compareAndSetNext尾节点指向null
+ *         if (node == tail && compareAndSetTail(node, pred)) {
+ *             compareAndSetNext(pred, predNext, null);
+ *         } else {
+ *             //  2. 如果node既不是tail，又不是head的后继节点
+ *             int ws;
+ *             if (pred != head &&
+ *                 ((ws = pred.waitStatus) == Node.SIGNAL ||
+ *                  (ws <= 0 && compareAndSetWaitStatus(pred, ws, Node.SIGNAL))) &&
+ *                 pred.thread != null) {
+ *                 Node next = node.next;
+ *                 if (next != null && next.waitStatus <= 0)
+ *                      // 也就是断开连接 指向node的后续节点
+ *                     compareAndSetNext(pred, predNext, next);
+ *             } else {
+ *                 // 3. 如果node是head的后继节点，则直接唤醒node的后继节点   然后在挂起出继续执行 然后清除取消的节点
+ *                 unparkSuccessor(node);
+ *             }
+ *
+ *             node.next = node; // help GC
+ *         }
+ *     }
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
  *
  */
