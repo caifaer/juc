@@ -1,9 +1,25 @@
 package com.smj.testboot.juc.aqs;
 
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 public class WriteReadSourceCode {
+
+
+    public static void main(String[] args) {
+        ReentrantReadWriteLock reentrantReadWriteLock = new ReentrantReadWriteLock();
+
+
+        reentrantReadWriteLock.readLock().lock();
+
+
+    }
 }
 
 /**
+ *
+ *          ReentrantReadWriteLock中的state代表了 读锁的数量 和 写锁的持有与否。
+ *                                             高16位代表 读锁。    低16位代表 写锁。
+ *
  *
  *
  *      // 写锁重写了 这个方法
@@ -46,12 +62,12 @@ public class WriteReadSourceCode {
  *         static final int EXCLUSIVE_MASK = (1 << SHARED_SHIFT) - 1;
  *
  *      // 1 左移16位减1  就是  0000 0000 0000 0000 1111 1111 1111 1111
- *      // 16进制就是  0x00001111   即地位都是 1
- *      // 此时与state状态求 与& 就可以获得 写锁的次数
+ *      // 16进制就是  0x00001111   即 低位 都是 1
+ *      // 此时与state状态求 与& 就可以获得 写锁的次数   也就是获得同步状态的 低16位
  *      static int exclusiveCount(int c) {
  *          return c & EXCLUSIVE_MASK;   // 即 c & (1 << 16) - 1;
  *      }
- *
+ *      // 该方法是获取读锁被获取的次数，是将同步状态（int c）右移16次，即取同步状态的高16位
  *      static int sharedCount(int c)    {
  *          return c >>> SHARED_SHIFT;  // 即 c >>> 16
  *      }
@@ -79,17 +95,22 @@ public class WriteReadSourceCode {
  *          if(exclusiveCount(c)!=0 && getExclusiveOwnerThread()!=current) {
  *              return-1;
  *          }
- *          // 获取高位的数值 即读锁的状态次数
+ *          // 获取高位的数值 即读锁的状态次数 也就是读锁的个数
  *          int r=sharedCount(c);
+ *          // 读 不被阻塞  --- 注:  writerShouldBlock和readerShouldBlock方法都表示当有别的线程也在尝试获取锁时，是否应该阻塞。
+ *          // 读锁个数小于 最大值
  *          // compareAndSetState(c,c+SHARED_UNIT) 即高位加1
  *          if(!readerShouldBlock() && r<MAX_COUNT && compareAndSetState(c,c+SHARED_UNIT)){
- *          // 给读锁计数
+ *
+ *              // 如果当前读锁为0
  *              if(r==0){
  *                  firstReader=current;
  *                  firstReaderHoldCount=1;
- *              }else if(firstReader==current){
+ *              } // 读锁大于0 并且当前节点 和头节点相同 表示  重入了
+ *              else if(firstReader==current){
  *                  firstReaderHoldCount++;
  *              }else{
+ *                  // 读锁大于0 并且当前节点 和头节点不相同 表示 没有重入  --- 记录每一个线程读的次数
  *                  HoldCounter rh=cachedHoldCounter;
  *                  if(rh==null||rh.tid!=getThreadId(current)) {
  *                      cachedHoldCounter=rh=readHolds.get();
@@ -100,8 +121,45 @@ public class WriteReadSourceCode {
  *              }
  *                  return 1;
  *          }
+ *           //  否则 就循环尝试
  *          return fullTryAcquireShared(current);
  *      }
+ *
+ *       // writerShouldBlock和readerShouldBlock方法都表示当有别的线程也在尝试获取锁时，是否应该阻塞。
+ *      static final class NonfairSync extends Sync {
+ *              // 对于非公平锁来说  writerShouldBlock  直接 返回false  即不需要阻塞
+ *              final boolean writerShouldBlock() {
+ *                  return false;
+ *              }
+ *              final boolean readerShouldBlock() {
+ *                   return apparentlyFirstQueuedIsExclusive();
+ *          }
+ *      }
+ *       // 该方法在当前线程是写锁占用的线程时，返回true；否则返回false。
+ *       // 也就说明，如果当前有一个写线程正在写，那么该读线程应该阻塞  返回true
+ *      final boolean apparentlyFirstQueuedIsExclusive() {
+ *         Node h, s;
+ *         return (h = head) != null &&
+ *             (s = h.next)  != null &&
+ *             !s.isShared()  // 是一个写锁  非共享锁
+ *             && s.thread != null;
+ *     }
+ *
+ *     // 公平锁 就简单了  直接判断队列中有没有合适的节点  有就阻塞 没有就不阻塞
+ *     static final class FairSync extends Sync {
+ *          private static final long serialVersionUID = -2274990926593161451L;
+ *          final boolean writerShouldBlock() {
+ *              return hasQueuedPredecessors();
+ *          }
+ *          final boolean readerShouldBlock() {
+ *              return hasQueuedPredecessors();
+ *          }
+ *      }
+ *
+ *
+ *
+ *
+ *
  *
  *      返回-1 时
  *      private void doAcquireShared(int arg) {

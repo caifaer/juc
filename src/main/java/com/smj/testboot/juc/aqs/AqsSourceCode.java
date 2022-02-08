@@ -555,6 +555,46 @@ public class AqsSourceCode {
  *
  *
  *
+ * ************************************************************************************8
+ *             共享锁
+ *             public final void acquireShared(long arg) {
+ *             //  当返回值为大于等于0的时候，说明获得成功获取锁，否则，表明获取同步状态失败即所引用的线程获取锁失败，会执行doAcquireShared方法。
+ *                      if (tryAcquireShared(arg) < 0)
+ *                          doAcquireShared(arg);
+ *              }
+ *
+ *              private void doAcquireShared(long arg) {
+ *                   //  类似于独占锁  这里将共享节点 放到同步队列 队尾。
+ *                  final Node node = addWaiter(Node.SHARED);
+ *                  boolean failed = true;
+ *                  try {
+ *                      boolean interrupted = false;
+ *                      for (;;) {
+ *                          final Node p = node.predecessor();
+ *                          if (p == head) {
+ *
+ *                              long r = tryAcquireShared(arg);
+ *                               //当前节点的前驱节点是 头结点 并且 tryAcquireShared(arg)返回值大于等于0即能成功获得同步状态。
+ *                              if (r >= 0) {
+ *                                  setHeadAndPropagate(node, r);
+ *                                  p.next = null; // help GC
+ *                                  if (interrupted)
+ *                                      selfInterrupt();
+ *                                  failed = false;
+ *                                  return;
+ *                              }
+ *                          }
+ *                          if (shouldParkAfterFailedAcquire(p, node) &&
+ *                              parkAndCheckInterrupt())
+ *                              interrupted = true;
+ *                      }
+ *                  } finally {
+ *                      if (failed)
+ *                          cancelAcquire(node);
+ *                  }
+ *               }
+ *
+ *
  *
  *
  *
