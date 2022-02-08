@@ -29,22 +29,25 @@ public class WriteReadSourceCode {
  *                 // 获得写锁的次数
  *                 int w = exclusiveCount(c);
  *                 // 即加锁
+ *                 //    加的是读锁 也有可能是 写锁
  *                 if (c != 0) {
  *                     // w等于0就是说没加写锁 加的是读锁 即已经有线程加了读锁了  读写互斥  直接false
- *                     // 加了写锁  此时要判断是不是当前线程加的  因为可能会有重入
+ *                     // 如果加的是写锁  此时要判断是不是当前线程加的  因为可能会有重入
  *                     if (w == 0 || current != getExclusiveOwnerThread())
  *                         return false;
- *                      //  只有16位  超过了就跑异常   很少  不会重入这么多次的
+ *                      //  只有16位  超过了就抛出异常   很少  不会重入这么多次的
  *                     if (w + exclusiveCount(acquires) > MAX_COUNT)
  *                         throw new Error("Maximum lock count exceeded");
  *                     // 重置state
  *                     setState(c + acquires);
  *                     return true;
  *                 }
- *                 // 非公平锁直接false  公平锁的话判断队列是否为空
+ *                 // 写锁是否应该阻塞  --- 非公平锁直接false  公平锁的话判断队列是否为空
+ *                 // 走到这里 意味着  c=0
  *                 if (writerShouldBlock() ||
  *                     !compareAndSetState(c, c + acquires))
  *                     return false;
+ *
  *                 setExclusiveOwnerThread(current);
  *                 return true;
  *      }
@@ -74,7 +77,7 @@ public class WriteReadSourceCode {
  *
  *
  *
- *
+ *      //  读锁加锁   ---  共享锁
  *      public final void acquireShared(int arg) {
  *         if (tryAcquireShared(arg) < 0)
  *             doAcquireShared(arg);
@@ -85,13 +88,16 @@ public class WriteReadSourceCode {
  *      // 返回 -1 表示失败
  *      // 0 表示成功，但后继节点不会继续唤醒
  *      // 正数表示成功，而且数值表示 还有几个后继节点需要唤醒，读写锁返回 1
- *      // 如果是读写锁 就会返回 1 或者 -1, 只有这两种情况  剩下的是信号量那边的
+ *
+ *      // 对于读写锁来说 就会返回 1 或者 -1, 只有这两种情况  上面的0  是信号量那边的
  *      protected final int tryAcquireShared(int unused) {
  *
  *          Thread current=Thread.currentThread();
  *          int c=getState();
- *          // 加了写锁  并且 加锁的线程不是当前线程  返回加锁失败
- *          // 这里 如果加了写锁 并且是该线程加的  则继续运行 因为锁降级是可以的  可以加完写锁 再加读锁
+ *          // true --- 写锁  并且 加写锁的线程不是当前线程  即另外有线程加了写锁  写写互斥
+ *          // false ---
+ *          //           1. 没有线程加写锁  读读并发
+ *          //           2. 同一个线程加了写锁  然后自己又来加读锁   写锁是可以降级的
  *          if(exclusiveCount(c)!=0 && getExclusiveOwnerThread()!=current) {
  *              return-1;
  *          }
@@ -101,7 +107,7 @@ public class WriteReadSourceCode {
  *          // 读锁个数小于 最大值
  *          // compareAndSetState(c,c+SHARED_UNIT) 即高位加1
  *          if(!readerShouldBlock() && r<MAX_COUNT && compareAndSetState(c,c+SHARED_UNIT)){
- *
+ *              /  进去if块内的 主要目的就是 给读锁计数
  *              // 如果当前读锁为0
  *              if(r==0){
  *                  firstReader=current;
@@ -163,13 +169,14 @@ public class WriteReadSourceCode {
  *
  *      返回-1 时
  *      private void doAcquireShared(int arg) {
- *      // 这里逻辑是一样的 只是 入参不一样
+ *          // 共享状态的节点
  *         final Node node = addWaiter(Node.SHARED);
  *         boolean failed = true;
  *         try {
  *             boolean interrupted = false;
  *             for (;;) {
  *                 final Node p = node.predecessor();
+ *                 // 头节点的下一个 节点才有资格争夺锁
  *                 if (p == head) {
  *                     int r = tryAcquireShared(arg);
  *                     // 读写锁 加锁成功会返回1
