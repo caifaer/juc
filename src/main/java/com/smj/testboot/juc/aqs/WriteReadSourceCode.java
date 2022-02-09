@@ -77,6 +77,26 @@ public class WriteReadSourceCode {
  *
  *
  *
+ *
+ *      //  关于 读锁 ---  读锁也是可以重入的 ，是通过一个 内部类 HoldCounter 来进行计数
+ *      // 某一个线程获取读锁时，他会获得一个HoldCounter，然后当他再次获取这把读锁时，就不会再次获得HoldCounter，而是将以前获得的这个HoldCounter的count自增1。
+ *      // 当失去的时候，就自减1，如果当这个count为0时，这个HoldCounter就会被ReentrantReadWriteLock抛弃。
+ *      //  此时思考一个问题，如何实现这样的一个 线程私用的 HoldCounter，并且还能够被ReentrantReadWriteLock?
+ *      //     答案:  使用 ThreadLocal
+ *          static final class HoldCounter {
+ *             int count = 0;
+ *             // 使用id 而不是引用变量 避免垃圾回收
+ *             final long tid = getThreadId(Thread.currentThread());
+ *         }
+ *
+ *          //  这里 就可以看出来  ThreadLocal中的存的 value 就是HoldCounter
+ *         static final class ThreadLocalHoldCounter extends ThreadLocal<HoldCounter> {
+ *                  public HoldCounter initialValue() {
+ *                      return new HoldCounter();
+ *                  }
+ *         }
+ *
+ *
  *      //  读锁加锁   ---  共享锁
  *      public final void acquireShared(int arg) {
  *         if (tryAcquireShared(arg) < 0)
@@ -117,6 +137,7 @@ public class WriteReadSourceCode {
  *                  firstReaderHoldCount++;
  *              }else{
  *                  // 读锁大于0 并且当前节点 和头节点不相同 表示 没有重入  --- 记录每一个线程读的次数
+ *                  // 记录的方式 就是获取 对应线程的 HoldCounter
  *                  HoldCounter rh=cachedHoldCounter;
  *                  if(rh==null||rh.tid!=getThreadId(current)) {
  *                      cachedHoldCounter=rh=readHolds.get();
@@ -127,9 +148,68 @@ public class WriteReadSourceCode {
  *              }
  *                  return 1;
  *          }
- *           //  否则 就循环尝试
+ *           //  否则 就自旋 进行加锁
  *          return fullTryAcquireShared(current);
  *      }
+ *
+ *
+ *       final int fullTryAcquireShared(Thread current) {
+ *              HoldCounter rh = null;
+ *              for (;;) {
+ *                  int c = getState();
+ *                  if (exclusiveCount(c) != 0) {
+ *                       // 持有 写锁
+ *                      if (getExclusiveOwnerThread() != current)
+ *                          return -1;
+ *                  } else if (readerShouldBlock()) {
+ *                      // 写锁堵塞
+ *                      if (firstReader == current) {
+ *                          // assert firstReaderHoldCount > 0;
+ *                      } else {
+ *                          if (rh == null) {
+ *                              rh = cachedHoldCounter;
+ *                              if (rh == null || rh.tid != getThreadId(current)) {
+ *                                  rh = readHolds.get();
+ *                                  // 读锁为0  直接删掉
+ *                                  if (rh.count == 0)
+ *                                      readHolds.remove();
+ *                              }
+ *                          }
+ *                          if (rh.count == 0)
+ *                              return -1;
+ *                      }
+ *
+ *                  }
+ *                  if (sharedCount(c) == MAX_COUNT)
+ *                      throw new Error("Maximum lock count exceeded");
+ *
+ *                   // 加锁成功
+ *                  if (compareAndSetState(c, c + SHARED_UNIT)) {
+ *                      if (sharedCount(c) == 0) {
+ *                          firstReader = current;
+ *                          firstReaderHoldCount = 1;
+ *                      } else if (firstReader == current) {
+ *                          firstReaderHoldCount++;
+ *                      } else {
+ *                          if (rh == null)
+ *                              rh = cachedHoldCounter;
+ *                          if (rh == null || rh.tid != getThreadId(current))
+ *                              rh = readHolds.get();
+ *                          else if (rh.count == 0)
+ *                              readHolds.set(rh);
+ *                          rh.count++;
+ *                          cachedHoldCounter = rh; // cache for release
+ *                      }
+ *                      return 1;
+ *                  }
+ *              }
+ *            }
+ *
+ *
+ *
+ *
+ *
+ *
  *
  *       // writerShouldBlock和readerShouldBlock方法都表示当有别的线程也在尝试获取锁时，是否应该阻塞。
  *      static final class NonfairSync extends Sync {
