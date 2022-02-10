@@ -40,6 +40,16 @@ public class AqsSourceCode {
 
 /**
  *
+ *      waitStatus状态
+ *          cancelled  1   取消状态  即发生了超时或者中断
+ *          signal    -1   线程已经准备好 等待获取锁
+ *          condition -2   节点在等待队列中  等待被唤醒
+ *          propagate -3   当前线程处在 shared情况下  才会被使用
+ *
+ *
+ *
+ *
+ *
  *      非公平锁  --  NonfairSync
  *          final void lock() {
  *          1. 首先尝试获取独占锁tryAcquire，如果获取成功就返回
