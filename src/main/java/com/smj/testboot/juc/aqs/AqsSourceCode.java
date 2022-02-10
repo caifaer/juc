@@ -317,6 +317,7 @@ public class AqsSourceCode {
  *             int interruptMode = 0;
  *             //  while之前 已经释放了锁  此时如果有线程拿到了锁 可能会signal/signalAll 就会将等待队列的节点放到同步队列中
  *             //  既然都已经在同步队列中  就不需要park了  直接退出while循环  自旋的获取锁即可
+ *             //  如果不在同步队列中  就说明没有争夺锁的资格  继续阻塞即可
  *             while (!isOnSyncQueue(node)) {
  *                 LockSupport.park(this);
  *                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
